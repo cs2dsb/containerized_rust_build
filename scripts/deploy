@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+# Exit when any command fails
+set -o errexit
+
+# Exit when an undeclared variable is used
+set -o nounset
+
+# Exit when a piped command returns a non-zero exit code
+set -o pipefail
+
+# Script to increment the patch version, tag it and push it
+# $1 is the tag comment. Defaults to something generic if not provided
+# Set NOBUMP=true to skip bumping the version (for when it's already been changed)
+# Set BUMP={major, minor, patch} to set the kind of bump to do. Defaults to patch
+
+readonly repo_dir="$( cd $(dirname ${BASH_SOURCE}); cd ..; pwd )";
+cd $repo_dir
+
+if ! cargo test; then 
+    >&2 echo "Failing tests detected. Aborting";
+    exit 1;
+fi
+
+./scripts/deploy_skip_tests

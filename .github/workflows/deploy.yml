@@ -1,0 +1,59 @@
+name: Deploy
+
+env:
+  CARGO_TERM_COLOR: always
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Get tag
+        id: tag
+        uses: dawidd6/action-get-tag@v1
+        # Because it can be kicked off manually there may not be a tag
+        continue-on-error: true
+
+      - name: Set build suffix
+        run: |
+          echo "SUFFIX=$([[ "${{ steps.tag.outputs.tag }}" = "" ]] && echo $GITHUB_SHA || echo ${{ steps.tag.outputs.tag }})" >> $GITHUB_ENV
+          DATE=$(date +'%Y-%m-%d_%H%M%S')
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "TAG=$([[ "${{ steps.tag.outputs.tag }}" = "" ]] && echo "main_$DATE" || echo "${{ steps.tag.outputs.tag }}")" >> $GITHUB_ENV
+      
+      - uses: actions/checkout@master
+
+      - name: Build 📦
+        run: |
+          docker build -t app -f ./Dockerfile .
+
+      - name: Prepare output
+        run: |
+          tree > output.lst
+          tar -I zstd -xvf output.lst artifacts-${{ env.SUFFIX }}.tar.zst
+
+      - name: Upload release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: "*.tar.*"
+          tag: ${{ env.TAG }}
+          overwrite: true
+          file_glob: true
+          prerelease: true
+
+      - name: Release release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: "README.md"
+          tag: ${{ env.TAG }}
+          overwrite: true
+          promote: true
+          prerelease: false
