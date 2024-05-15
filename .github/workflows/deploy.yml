@@ -2,6 +2,7 @@ name: Deploy
 
 env:
   CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
 
 on:
   push:
@@ -14,52 +15,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Get tag
+      - name: Get tag 🔎
         id: tag
         uses: dawidd6/action-get-tag@v1
         # Because it can be kicked off manually there may not be a tag
         continue-on-error: true
 
-      - name: Set build suffix
+      - name: Set build suffix 🔍
         run: |
           echo "SUFFIX=$([[ "${{ steps.tag.outputs.tag }}" = "" ]] && echo $GITHUB_SHA || echo ${{ steps.tag.outputs.tag }})" >> $GITHUB_ENV
           DATE=$(date +'%Y-%m-%d_%H%M%S')
-          echo "DATE=$DATE" >> $GITHUB_ENV
-          echo "TAG=$([[ "${{ steps.tag.outputs.tag }}" = "" ]] && echo "main_$DATE" || echo "${{ steps.tag.outputs.tag }}")" >> $GITHUB_ENV
+          REPO=${GITHUB_REPOSITORY#$GITHUB_REPOSITORY_OWNER/}
+          
+          echo "DATE=$DATE" | tee -a $GITHUB_ENV
+          echo "TAG=$([[ "${{ steps.tag.outputs.tag }}" = "" ]] && echo "main_$DATE" || echo "${{ steps.tag.outputs.tag }}")" | tee -a $GITHUB_ENV
+          echo "REPO_NAME=$REPO" | tee -a $GITHUB_ENV
+          echo "REPO_OWNER=$GITHUB_REPOSITORY_OWNER" | tee -a $GITHUB_ENV
+          echo "IMAGE_TAG=${{ env.REGISTRY }}/$GITHUB_REPOSITORY_OWNER/$REPO:latest" | tee -a $GITHUB_ENV
+          echo "IMAGE_NAME=$REPO" | tee -a $GITHUB_ENV
       
       - uses: actions/checkout@master
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Log into registry ${{ env.REGISTRY }} 🔑
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build 📦
+      - name: Build docker 📦
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Package output 🗜️
         run: |
-          docker build -t app -f ./Dockerfile .
+          set -euo pipefail
+          docker pull ${{ env.IMAGE_TAG }}
+          docker images
+          docker save ${{ env.IMAGE_TAG }} | zstd -o "${{ env.REPO_NAME }}-${{ env.SUFFIX }}-image.tar.zstd"
 
-      - name: Build and push with `latest` tag
-        run: |
-          RUST_IMAGE_TAG=latest
-          CHEF_PACKAGE_VERSION=latest
-          CHEF_IMAGE=$DOCKER_REPO:$CHEF_PACKAGE_VERSION-rust-$RUST_IMAGE_TAG
-          CHEF_IMAGE_LATEST=$DOCKER_REPO:latest-rust-$RUST_IMAGE_TAG
-
-            # --tag $CHEF_IMAGE \
-            # --tag $CHEF_IMAGE_LATEST \
-            # --tag $DOCKER_REPO:latest \
-            # --push \
-            # --build-arg=BASE_IMAGE=rust:latest \
-            # --build-arg=CHEF_TAG=$CHEF_PACKAGE_VERSION \
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            -t app \
-            -f ./Dockerfile .
-
-      - name: Prepare output
-        run: |
-          tree > output.lst
-          tar --zstd -cvf artifacts-${{ env.SUFFIX }}.tar.zst output.lst
-
-      - name: Upload release
+      - name: Upload release 📡
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -69,7 +72,7 @@ jobs:
           file_glob: true
           prerelease: true
 
-      - name: Release release
+      - name: Release release 📨
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
