@@ -36,7 +36,7 @@ jobs:
       - name: Prepare output
         run: |
           tree > output.lst
-          tar -I zstd -xvf output.lst artifacts-${{ env.SUFFIX }}.tar.zst
+          tar --zstd -cvf artifacts-${{ env.SUFFIX }}.tar.zst output.lst
 
       - name: Upload release
         uses: svenstaro/upload-release-action@v2
