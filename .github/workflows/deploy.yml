@@ -29,9 +29,30 @@ jobs:
       
       - uses: actions/checkout@master
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build 📦
         run: |
           docker build -t app -f ./Dockerfile .
+
+      - name: Build and push with `latest` tag
+        run: |
+          RUST_IMAGE_TAG=latest
+          CHEF_PACKAGE_VERSION=latest
+          CHEF_IMAGE=$DOCKER_REPO:$CHEF_PACKAGE_VERSION-rust-$RUST_IMAGE_TAG
+          CHEF_IMAGE_LATEST=$DOCKER_REPO:latest-rust-$RUST_IMAGE_TAG
+
+            # --tag $CHEF_IMAGE \
+            # --tag $CHEF_IMAGE_LATEST \
+            # --tag $DOCKER_REPO:latest \
+            # --push \
+            # --build-arg=BASE_IMAGE=rust:latest \
+            # --build-arg=CHEF_TAG=$CHEF_PACKAGE_VERSION \
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t app \
+            -f ./Dockerfile .
 
       - name: Prepare output
         run: |
